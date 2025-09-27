@@ -1,12 +1,11 @@
 import os
 from io import BytesIO
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 import requests
 from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from telegram.ext import Updater, CommandHandler, MessageHandler, filters, CallbackContext
 from g4f.client import Client
 
-# Bot Token aus Environment Variable
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 def generiere_und_sende(update: Update, prompt: str):
@@ -17,7 +16,12 @@ def generiere_und_sende(update: Update, prompt: str):
 
         response = requests.get(image_url)
         img_data = BytesIO(response.content)
-        pil_img = Image.open(img_data)
+
+        try:
+            pil_img = Image.open(img_data)
+        except UnidentifiedImageError:
+            update.message.reply_text("Fehler: Konnte das Bild nicht öffnen.")
+            return
 
         byte_arr = BytesIO()
         pil_img.save(byte_arr, format='PNG')
@@ -39,7 +43,7 @@ def prompt_command(update: Update, context: CallbackContext):
         update.message.reply_text(f"Generiere Bild für Prompt: {prompt}")
         generiere_und_sende(update, prompt)
     else:
-        update.message.reply_text("Bitte gib einen Prompt nach /prompt ein, z. B. /prompt Einhörner im Sonnenuntergang.")
+        update.message.reply_text("Bitte gib einen Prompt nach /prompt ein.")
 
 def text_message(update: Update, context: CallbackContext):
     prompt = update.message.text
@@ -52,7 +56,7 @@ def main():
 
     dp.add_handler(CommandHandler("start", start_command))
     dp.add_handler(CommandHandler("prompt", prompt_command))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, text_message))
+    dp.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message))
 
     updater.start_polling()
     updater.idle()
