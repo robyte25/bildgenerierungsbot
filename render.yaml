@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: telegram-bot
+    env: python
+    plan: free
+    buildCommand: ""
+    startCommand: "python bot.py"
+    envVars:
+      - key: TELEGRAM_TOKEN
+        sync: false
+    runtime: python3.10
