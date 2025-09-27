@@ -9,7 +9,6 @@ from g4f.client import Client
 # Bot Token aus Environment Variable
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
-# Bildgenerierungs-Funktion
 def generiere_und_sende(update: Update, prompt: str):
     try:
         app_client = Client()
@@ -40,7 +39,7 @@ def prompt_command(update: Update, context: CallbackContext):
         update.message.reply_text(f"Generiere Bild für Prompt: {prompt}")
         generiere_und_sende(update, prompt)
     else:
-        update.message.reply_text("Bitte gib einen Prompt nach /prompt ein, z. B. /prompt Einhörner im Sonnenuntergang.")
+        update.message.reply_text("Bitte gib einen Prompt nach /prompt ein, z. B. /prompt Einhörner im Sonnenuntergang.")
 
 def text_message(update: Update, context: CallbackContext):
     prompt = update.message.text
