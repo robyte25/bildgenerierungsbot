@@ -6,6 +6,7 @@ from flask import Flask, request
 from g4f.client import Client
 from telegram import Bot, Update
 from telegram.constants import ParseMode
+import asyncio
 
 # =============================
 # Konfiguration
@@ -29,11 +30,11 @@ def set_webhook():
 # =============================
 # Bildgenerierung
 # =============================
-def generiere_bild(prompt: str):
+async def generiere_bild_async(prompt: str):
     client = Client()
-    model = client.images.generate(model='flux', prompt=prompt, response_format='url')
-    image_url = model.data[0].url
+    model = await client.images.generate(model='flux', prompt=prompt, response_format='url')  # async call
 
+    image_url = model.data[0].url
     response = requests.get(image_url)
     pil_img = Image.open(BytesIO(response.content))
 
@@ -41,6 +42,9 @@ def generiere_bild(prompt: str):
     pil_img.save(byte_arr, format='PNG')
     byte_arr.seek(0)
     return byte_arr
+
+def generiere_bild(prompt: str):
+    return asyncio.run(generiere_bild_async(prompt))
 
 # =============================
 # Telegram Webhook Handler
@@ -68,7 +72,6 @@ def webhook():
                 except Exception as e:
                     bot.send_message(chat_id, f"Fehler beim Generieren des Bildes: {e}")
         else:
-            # normale Textnachrichten als Prompt behandeln
             bot.send_message(chat_id, f"Generiere Bild für Prompt: {text}")
             try:
                 bild = generiere_bild(text)
@@ -82,5 +85,5 @@ def webhook():
 # Start
 # =============================
 if __name__ == "__main__":
-    set_webhook()  # optional: setzt den Webhook einmal beim Start
+    set_webhook()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
