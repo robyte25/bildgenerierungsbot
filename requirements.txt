@@ -1,6 +1,5 @@
-python-telegram-bot
-pillow
-requests
+Flask
+pyTelegramBotAPI
 g4f
-typing_extensions>=4.5.0
-flask
+Pillow
+requests
