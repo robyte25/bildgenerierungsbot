@@ -5,8 +5,6 @@ from PIL import Image
 from flask import Flask, request
 from g4f.client import Client
 from telegram import Bot, Update
-from telegram.constants import ParseMode
-import asyncio
 
 # =============================
 # Konfiguration
@@ -18,7 +16,7 @@ bot = Bot(token=TELEGRAM_TOKEN)
 app = Flask(__name__)
 
 # =============================
-# Webhook Setup (optional)
+# Webhook Setup
 # =============================
 def set_webhook():
     resp = requests.post(
@@ -28,13 +26,13 @@ def set_webhook():
     print("Webhook Response:", resp.json())
 
 # =============================
-# Bildgenerierung
+# Bildgenerierung (synchronisiert)
 # =============================
-async def generiere_bild_async(prompt: str):
+def generiere_bild(prompt: str):
     client = Client()
-    model = await client.images.generate(model='flux', prompt=prompt, response_format='url')  # async call
-
+    model = client.images.generate(model='flux', prompt=prompt, response_format='url')
     image_url = model.data[0].url
+
     response = requests.get(image_url)
     pil_img = Image.open(BytesIO(response.content))
 
@@ -42,9 +40,6 @@ async def generiere_bild_async(prompt: str):
     pil_img.save(byte_arr, format='PNG')
     byte_arr.seek(0)
     return byte_arr
-
-def generiere_bild(prompt: str):
-    return asyncio.run(generiere_bild_async(prompt))
 
 # =============================
 # Telegram Webhook Handler
@@ -65,21 +60,28 @@ def webhook():
             if not prompt:
                 bot.send_message(chat_id, "Bitte gib einen Prompt nach /prompt ein.")
             else:
-                bot.send_message(chat_id, f"Generiere Bild für Prompt: {prompt}")
+                bot.send_message(chat_id, f"🎨 Generiere Bild für Prompt: {prompt} …")
                 try:
                     bild = generiere_bild(prompt)
                     bot.send_photo(chat_id, photo=bild)
                 except Exception as e:
-                    bot.send_message(chat_id, f"Fehler beim Generieren des Bildes: {e}")
+                    bot.send_message(chat_id, f"❌ Fehler: {e}")
         else:
-            bot.send_message(chat_id, f"Generiere Bild für Prompt: {text}")
+            bot.send_message(chat_id, f"🎨 Generiere Bild für Prompt: {text} …")
             try:
                 bild = generiere_bild(text)
                 bot.send_photo(chat_id, photo=bild)
             except Exception as e:
-                bot.send_message(chat_id, f"Fehler beim Generieren des Bildes: {e}")
+                bot.send_message(chat_id, f"❌ Fehler: {e}")
 
     return "OK"
+
+# =============================
+# Optionale Startseite (gegen 404)
+# =============================
+@app.route("/")
+def home():
+    return "✅ Telegram Bildgenerierungsbot läuft!"
 
 # =============================
 # Start
