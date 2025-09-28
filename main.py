@@ -1,70 +1,86 @@
+import os
 import requests
 from io import BytesIO
 from PIL import Image
+from flask import Flask, request
 from g4f.client import Client
-from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    ContextTypes,
-    filters,
-)
+from telegram import Bot, Update
+from telegram.constants import ParseMode
 
-# 🔑 Telegram Token direkt im Code
-TELEGRAM_TOKEN = "8028466463:AAHW_WIIZFxepl2I-iVyyPG_jtaKJgXaKLk"
+# =============================
+# Konfiguration
+# =============================
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8028466463:AAHW_WIIZFxepl2I-iVyyPG_jtaKJgXaKLk")
+WEBHOOK_URL = "https://bildgenerierungsbot-12.onrender.com/webhook"
 
-# ---- Handlers ----
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Willkommen! 👋 Sende mir einen Prompt oder nutze /prompt <text>."
+bot = Bot(token=TELEGRAM_TOKEN)
+app = Flask(__name__)
+
+# =============================
+# Webhook Setup (optional)
+# =============================
+def set_webhook():
+    resp = requests.post(
+        f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook",
+        data={"url": WEBHOOK_URL}
     )
+    print("Webhook Response:", resp.json())
 
-async def prompt_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.args:
-        prompt = " ".join(context.args)
-        await update.message.reply_text(f"Generiere Bild für Prompt: {prompt}")
-        await generiere_und_sende(update, prompt)
-    else:
-        await update.message.reply_text(
-            "⚠️ Bitte gib einen Prompt nach /prompt ein, z.B. /prompt Einhörner im Sonnenuntergang."
-        )
+# =============================
+# Bildgenerierung
+# =============================
+def generiere_bild(prompt: str):
+    client = Client()
+    model = client.images.generate(model='flux', prompt=prompt, response_format='url')
+    image_url = model.data[0].url
 
-async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    prompt = update.message.text
-    await update.message.reply_text(f"Generiere Bild für Prompt: {prompt}")
-    await generiere_und_sende(update, prompt)
+    response = requests.get(image_url)
+    pil_img = Image.open(BytesIO(response.content))
 
-async def generiere_und_sende(update: Update, prompt: str):
-    try:
-        client = Client()
-        model = client.images.generate(model='flux', prompt=prompt, response_format='url')
-        image_url = model.data[0].url
+    byte_arr = BytesIO()
+    pil_img.save(byte_arr, format='PNG')
+    byte_arr.seek(0)
+    return byte_arr
 
-        response = requests.get(image_url, timeout=30)
-        response.raise_for_status()
-        img_data = BytesIO(response.content)
-        pil_img = Image.open(img_data)
+# =============================
+# Telegram Webhook Handler
+# =============================
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    update_data = request.get_json()
+    update = Update.de_json(update_data, bot)
 
-        byte_arr = BytesIO()
-        pil_img.save(byte_arr, format='PNG')
-        byte_arr.seek(0)
+    if update.message:
+        chat_id = update.message.chat.id
+        text = update.message.text
 
-        await update.message.reply_photo(photo=byte_arr)
-    except Exception as e:
-        await update.message.reply_text(f"❌ Fehler beim Generieren des Bildes: {e}")
+        if text.startswith("/start"):
+            bot.send_message(chat_id, "Willkommen! Schicke mir einen Prompt, ich generiere ein Bild daraus.")
+        elif text.startswith("/prompt"):
+            prompt = " ".join(text.split()[1:])
+            if not prompt:
+                bot.send_message(chat_id, "Bitte gib einen Prompt nach /prompt ein.")
+            else:
+                bot.send_message(chat_id, f"Generiere Bild für Prompt: {prompt}")
+                try:
+                    bild = generiere_bild(prompt)
+                    bot.send_photo(chat_id, photo=bild)
+                except Exception as e:
+                    bot.send_message(chat_id, f"Fehler beim Generieren des Bildes: {e}")
+        else:
+            # normale Textnachrichten als Prompt behandeln
+            bot.send_message(chat_id, f"Generiere Bild für Prompt: {text}")
+            try:
+                bild = generiere_bild(text)
+                bot.send_photo(chat_id, photo=bild)
+            except Exception as e:
+                bot.send_message(chat_id, f"Fehler beim Generieren des Bildes: {e}")
 
-# ---- Main ----
-def main():
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    return "OK"
 
-    # Handler registrieren
-    app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(CommandHandler("prompt", prompt_command))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message))
-
-    print("🤖 Bot läuft mit Polling...")
-    app.run_polling()  # <- Polling statt Webhook
-
+# =============================
+# Start
+# =============================
 if __name__ == "__main__":
-    main()
+    set_webhook()  # optional: setzt den Webhook einmal beim Start
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
