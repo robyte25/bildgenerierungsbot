@@ -1,9 +1,9 @@
 import requests
 from io import BytesIO
 from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from telegram.ext import Updater, CommandHandler, MessageHandler, filters, CallbackContext
 from g4f.client import Client
-
+Filters = filters
 # ==== Telegram Token direkt ====
 TELEGRAM_TOKEN = "8028466463:AAHW_WIIZFxepl2I-iVyyPG_jtaKJgXaKLk"
 
