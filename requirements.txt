@@ -1,6 +1,5 @@
-Flask
 pyTelegramBotAPI
-g4f
-Pillow
-requests
-typing_extensions
+​flask
+​requests
+​Pillow
+​puter
