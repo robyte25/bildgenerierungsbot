@@ -1,10 +1,9 @@
 import os
 import requests
 from io import BytesIO
-from PIL import Image
 from flask import Flask, request
 import telebot
-import puter  # Stelle sicher, dass 'puter' in deiner requirements.txt steht
+import puter
 
 # =============================
 # Konfiguration
@@ -12,87 +11,80 @@ import puter  # Stelle sicher, dass 'puter' in deiner requirements.txt steht
 TELEGRAM_TOKEN = "8028466463:AAHW_WIIZFxepl2I-iVyyPG_jtaKJgXaKLk"
 WEBHOOK_URL = "https://bildgenerierungsbot-12.onrender.com/webhook"
 
-# Puter Zugangsdaten
-PUTER_USER = "RVK"
-PUTER_PASS = "Magistralnaja14!"
+# Liste deiner Puter-Accounts
+ACCOUNTS = [
+    {"user": "RVK", "pass": "Magistralnaja14!"},
+    {"user": "AI1", "pass": Magistralnaja14!"},
+    # Du kannst hier beliebig viele Konten hinzufügen
+]
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 app = Flask(__name__)
 
 # =============================
-# Bildgenerierung mit Puter
+# Bildgenerierung mit Fallback
 # =============================
 def generiere_bild(prompt: str):
-    # Authentifizierung bei Puter
-    # Wir nutzen hier die Standard-Schnittstelle von Puter
-    try:
-        # Hinweis: Das puter-SDK handhabt den Login meist über Umgebungsvariablen 
-        # oder eine interne .auth() Methode.
-        image = puter.ai.txt2img(prompt, test_mode=False)
-        
-        # Das Ergebnis von puter.ai.txt2img ist direkt ein PIL-Image oder ein Objekt mit .save()
-        byte_arr = BytesIO()
-        image.save(byte_arr, format='PNG')
-        byte_arr.seek(0)
-        return byte_arr
-    except Exception as e:
-        print(f"Puter Fehler: {e}")
-        raise e
+    last_error = ""
+    
+    for account in ACCOUNTS:
+        try:
+            # Login-Daten für das aktuelle Konto setzen
+            os.environ["PUTER_USERNAME"] = account["user"]
+            os.environ["PUTER_PASSWORD"] = account["pass"]
+            
+            print(f"Versuche Generierung mit Account: {account['user']}...")
+            
+            # Bild generieren
+            image = puter.ai.txt2img(prompt, test_mode=False)
+            
+            # Bild in Speicher schreiben
+            byte_arr = BytesIO()
+            image.save(byte_arr, format='PNG')
+            byte_arr.seek(0)
+            return byte_arr # Erfolg! Wir springen aus der Funktion
+            
+        except Exception as e:
+            last_error = str(e)
+            if "quota" in last_error.lower():
+                print(f"❌ Account {account['user']} hat keine Credits mehr. Wechsle...")
+                continue # Nächster Account in der Liste
+            else:
+                # Ein anderer Fehler (z.B. Netzwerk), wir brechen ab
+                raise e
+                
+    # Wenn alle Accounts durchgelaufen sind und keiner funktioniert hat:
+    raise Exception(f"Alle Accounts leer oder Fehler: {last_error}")
 
 # =============================
-# Telegram Befehle
+# Telegram Logik
 # =============================
-@bot.message_handler(commands=['start'])
-def start(message):
-    bot.send_message(message.chat.id, "👋 Hallo! Ich nutze jetzt Puter AI für deine Bilder. Sende mir einfach einen Text.")
-
-@bot.message_handler(commands=['prompt'])
-def handle_prompt(message):
-    parts = message.text.split(" ", 1)
-    if len(parts) == 1:
-        bot.send_message(message.chat.id, "⚠️ Bitte gib Text nach /prompt ein.")
-        return
-    process_request(message, parts[1])
-
 @bot.message_handler(func=lambda m: True)
-def echo_all(message):
-    process_request(message, message.text)
-
-def process_request(message, prompt):
-    bot.send_message(message.chat.id, f"🎨 Puter generiert Bild für: {prompt} ...")
+def handle_message(message):
+    prompt = message.text
+    if prompt.startswith('/'): return # Ignoriere Befehle hier
+    
+    bot.send_message(message.chat.id, f"🎨 Generiere mit Puter-Rotation...")
     try:
         bild = generiere_bild(prompt)
         bot.send_photo(message.chat.id, bild)
     except Exception as e:
-        bot.send_message(message.chat.id, f"❌ Fehler bei der Generierung: {e}")
+        bot.send_message(message.chat.id, f"❌ Abbruch: {e}")
 
 # =============================
-# Flask Webhook Endpoint
+# Flask Webhook & Start
 # =============================
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return ''
-    else:
-        return "Forbidden", 403
+    json_str = request.get_data().decode("UTF-8")
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return "OK", 200
 
-@app.route("/", methods=["GET"])
+@app.route("/")
 def home():
-    return "✅ Puter-Bot ist online!"
+    return "✅ Bot mit Account-Rotation läuft!"
 
-# =============================
-# Start
-# =============================
 if __name__ == "__main__":
-    # Setze Puter Credentials als Umgebungsvariable im laufenden Prozess
-    os.environ["PUTER_USERNAME"] = PUTER_USER
-    os.environ["PUTER_PASSWORD"] = PUTER_PASS
-
-    # Webhook bei Telegram registrieren
     requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook?url={WEBHOOK_URL}")
-    
-    # Flask App starten
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
